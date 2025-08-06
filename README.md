@@ -1,26 +1,33 @@
-# Document Generation CLI Utility (HW7)
+**Document Generator with Observer** — консольна утіли́та для побудови документів у різних форматах (Markdown, HTML, plain text) з логуванням та статистикою процесу рендерингу через патерн Observer.
 
-Цей проєкт демонструє створення системи генерації документів із використанням патернів **Composite** та **Bridge**.
+# Document Generation CLI Utility (HW8)
 
 ## Структура проекту
 
 ```
 src/
+├── main.ts                        # Точка входу CLI
+├── RenderEventPublisher.ts       # Статичний видавець подій для Observer
 ├── interfaces/
-│   ├── DocNode.ts        # Інтерфейс для елементів документа (Composite)
-│   └── DocRenderer.ts    # Інтерфейс для рендерерів (Bridge)
-├── renderers/
-│   ├── BaseRenderer.ts   # Абстрактний базовий клас рендерерів
-│   ├── HTMLRenderer.ts   # Реалізація DocRenderer для HTML
-│   ├── MarkdownRenderer.ts # Реалізація DocRenderer для Markdown
-│   └── PlainTextRenderer.ts # Реалізація DocRenderer для plain text
+│   ├── DocNode.ts                # Інтерфейс елементів документа (Composite)
+│   ├── DocRenderer.ts            # Інтерфейс рендерерів (Bridge)
+│   ├── RenderContext.ts          # Контекст подій рендерингу
+│   └── RenderEventSubscriber.ts  # Інтерфейс підписника для Observer
+├── subscribers/
+│   ├── RenderLoggerSubscriber.ts # Логування кожного рендеру
+│   ├── SummaryCollector.ts       # Підрахунок і вивід підсумків
+│   └── PerformanceSubscriber.ts  # Підрахунок загального часу рендерингу
 ├── nodes/
-│   ├── Paragraph.ts      # DocNode: параграф (делегує форматування Bridge)
-│   ├── List.ts           # DocNode: список з елементів
-│   └── Section.ts        # DocNode-Composite: секція з дочірніми DocNode
+│   ├── Paragraph.ts              # Простий вузол: параграф
+│   ├── List.ts                   # Простий вузол: список
+│   └── Section.ts                # Контейнер: секція (Composite)
 ├── factories/
-│   └── RendererFactory.ts # Фабрика для вибору DocRenderer (Bridge)
-└── main.ts               # CLI: створення документа та вивід файлу або в консоль
+│   └── RendererFactory.ts        # Фабрика вибору рендерера (Bridge)
+└── renderers/
+    ├── BaseRenderer.ts           # Базовий клас рендерерів
+    ├── MarkdownRenderer.ts       # Реалізація Markdown
+    ├── HTMLRenderer.ts           # Реалізація HTML
+    └── PlainTextRenderer.ts      # Реалізація plain text
 
 .gitignore
 package.json
@@ -29,100 +36,70 @@ tsconfig.json
 
 ## Використані патерни
 
-* **Composite**: клас `Section` реалізує `DocNode` та містить список дочірніх `DocNode`, формуючи дерево елементів документа.
-* **Bridge**: інтерфейс `DocRenderer` абстрагує форматування; конкретні рендерери (`HTMLRenderer`, `MarkdownRenderer`, `PlainTextRenderer`) реалізують інтерфейс незалежно від структури документа.
+* **Composite** (в `Section.ts`): секція як контейнер, що може містити інші `DocNode`-вузли.
+* **Bridge** (через `DocRenderer`): розділення структури документа і форматування виводу.
+* **Observer** (новий реактивний шар): через `RenderEventPublisher` та підписників спостерігаємо за рендерингом.
+
+## Як реалізовано Observer
+
+1. **RenderEventPublisher** — статичний клас, що зберігає масив `RenderEventSubscriber`, методи:
+
+   ```ts
+   static subscribe(sub: RenderEventSubscriber): void;
+   static unsubscribe(sub: RenderEventSubscriber): void;
+   static notify(ctx: RenderContext): void;
+   ```
+2. **RenderContext** — об’єкт події: тип вузла (`'Section' | 'Paragraph' | 'List'`), контент, рівень, масив `items`, час рендерингу.
+3. **RenderEventSubscriber** — інтерфейс з методом `update(context: RenderContext)`: реалізують:
+
+   * `RenderLoggerSubscriber` — виводить `[Log] Rendered ...`;
+   * `SummaryCollector` — підраховує і виводить підсумок по закінченні;
+   * `PerformanceSubscriber` — акумулює і виводить загальний час.
+4. Кожен `DocNode` (Paragraph, List, Section) у методі `render()` після формування рядка вимірює час та викликає:
+
+   ```ts
+   RenderEventPublisher.notify({ type, content, level, items, renderTime });
+   ```
 
 ## Приклад запуску
 
 ```bash
-# Генерація Markdown та вивід у файл output.md
+# Markdown у файл
 npx ts-node src/main.ts markdown output.md
 
-# Генерація HTML та вивід у консоль
+# HTML у консоль
 npx ts-node src/main.ts html
-```
-## Встановлення
-```bash
-npm install
-```
-
-## Використання
-
-### Запуск з виводом в консоль
-```bash
-npm start -- markdown  # Markdown формат
-npm start -- plain    # Простий текст
-npm start -- html     # HTML формат
-```
-
-### Збереження у файл
-```bash
-npm start -- html output.html     # Зберегти як HTML
-npm start -- markdown output.md   # Зберегти як Markdown
-npm start -- plain output.txt     # Зберегти як текст
 ```
 
 ## Приклад виводу
 
-### Markdown (output.md)
-
-```markdown
+```
 # Структурні патерни
-
-## Основні патерни
-
-Розглянемо два важливих структурних патернів.
-
-## Composite
-
-Дозволяє створювати деревоподібні структури об'єктів.
-
-- Спрощує структуру
-- Гнучкий код
-- Легка підтримка
-
-## Bridge
-
-Розділяє абстракцію та реалізацію.
-
-- Незалежні зміни
-- Краща масштабованість
+...
+[Log] Rendered Paragraph (44 chars)
+[Log] Rendered List (3 items)
+[Log] Rendered Section ("Composite", level 2)
+...
+[Summary] Rendered 4 sections, 3 paragraphs, 2 lists
+[Performance] Total render time: 5ms
 ```
 
-### HTML
+## Створення нового підписника
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Document</title>
-</head>
-<body>
-  <h1>Структурні патерни</h1>
-  <h2>Основні патерни</h2>
-  <p>Розглянемо два важливих структурних патернів.</p>
-  <h2>Composite</h2>
-  <p>Дозволяє створювати деревоподібні структури об&#039;єктів.</p>
-  <ul>
-    <li>Спрощує структуру</li>
-    <li>Гнучкий код</li>
-    <li>Легка підтримка</li>
-  </ul>
-  <h2>Bridge</h2>
-  <p>Розділяє абстракцію та реалізацію.</p>
-  <ul>
-    <li>Незалежні зміни</li>
-    <li>Краща масштабованість</li>
-  </ul>
-</body>
-</html>
-```
+1. Створіть клас у `subscribers/`, що реалізує `RenderEventSubscriber`:
 
-## Пояснення застосування патернів
+   ```ts
+   export class CustomSubscriber implements RenderEventSubscriber {
+     update(ctx: RenderContext): void {
+       console.log(`[Custom] ${ctx.type} rendered.`);
+     }
+   }
+   ```
+2. Підпишіть у `main.ts` перед генерацією:
 
-* **Composite** у `Section.ts`: секція є контейнером (`Composite`), яка може містити інші елементи (`Leaf` — `Paragraph`, `List`) та інші секції.
-* **Bridge** через `DocRenderer` та `RendererFactory`: розділення абстракції документа й конкретної реалізації форматування (Markdown, HTML, Text).
+   ```ts
+   RenderEventPublisher.subscribe(new CustomSubscriber());
+   ```
 
 ---
 
